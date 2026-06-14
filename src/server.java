@@ -1,10 +1,16 @@
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class server {
+
+    private static final List<ClientHandler> clients = new CopyOnWriteArrayList<>();
+
     public static void main(String[] args) throws IOException {
 
         if (args.length < 1) {
@@ -16,29 +22,87 @@ public class server {
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("Listening on port " + port);
-            System.out.println("Waiting for client on port " + port);
+            System.out.println("Waiting for clients on port " + port);
 
-            try (Socket clientSocket = serverSocket.accept()) {
+            while(true) {
+                Socket clientSocket = serverSocket.accept();
+                System.out.println("Accepted connection from " + clientSocket.getInetAddress());
 
-                System.out.println("Connected to client " + clientSocket.getInetAddress());
+                ClientHandler handler = new ClientHandler(clientSocket);
+                clients.add(handler);
 
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(clientSocket.getInputStream())
-                );
+                Thread thread = new Thread(handler);
+                thread.start();
+            }
+
+        } catch (IOException e) {
+            System.out.println("Server error: " + e.getMessage());
+        }
+    }
+
+    static class ClientHandler implements Runnable {
+
+        private final Socket clientSocket;
+        private PrintWriter writer;
+        private String role; // This can be Publisher ot Subscriber
+
+        public ClientHandler(Socket clientSocket) {
+            this.clientSocket = clientSocket;
+        }
+
+        @Override
+        public void run() {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(clientSocket.getInputStream()))){
+
+                writer = new PrintWriter(clientSocket.getOutputStream(), true);
+
+                String registerLine = reader.readLine();
+
+                if (registerLine != null && registerLine.startsWith("REGISTER")) {
+                    role = registerLine.split("\\|")[1];
+                    System.out.println("Client registered as: " + role);
+                }
 
                 String line;
 
                 while ((line = reader.readLine()) != null) {
-                    System.out.println("Client Says: " + line);
 
                     if (line.equalsIgnoreCase("terminate")) {
-                        System.out.println("Client requested to close the connection.");
+                        System.out.println(role + "disconnected.");
                         break;
                     }
+
+                    System.out.println(role + "says: " + line);
+
+                    if ("PUBLISHER".equalsIgnoreCase(role)) {
+                        broadcastToSubscribers(line);
+                    }
                 }
+            } catch (IOException e) {
+                System.out.println("Connection error: " + e.getMessage());
+            } finally {
+                clients.remove(this);
+                try {
+                    clientSocket.close();
+                } catch (IOException ignored) {}
             }
         }
 
-        System.out.println("Server shutting down.");
+        public void send(String message){
+            writer.println(message);
+        }
+
+        public String getRole(){
+            return role;
+        }
+
+        private void broadcastToSubscribers(String message){
+            for (ClientHandler client : clients) {
+                if ("SUBSCRIBER".equalsIgnoreCase(client.getRole())) {
+                    client.send(message);
+                }
+            }
+        }
     }
 }
