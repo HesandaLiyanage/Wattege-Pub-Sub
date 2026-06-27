@@ -9,21 +9,23 @@ public class client{
     public static void main(String[] args) throws IOException {
 
         if (args.length < 3) {
-            System.out.println("Usage: java client <SERVER_IP> <PORT> <PUBLISHER|SUBSCRIBER>");
+            System.out.println("Usage: java client <SERVER_IP> <PORT> <PUBLISHER|SUBSCRIBER> [TOPIC]");
             return;
         }
 
         String serverIp = args[0];
         int serverPort = Integer.parseInt(args[1]);
         String role = args[2].toUpperCase();
+        String topic = args.length >= 4 ? args[3] : "GLOBAL";
 
         Socket socket = new Socket(serverIp, serverPort);
         PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
         BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-        System.out.println("Connected to server " + serverIp + ":" + serverPort + " as " + role);
+        System.out.println("Connected to server " + serverIp + ":" + serverPort
+                + " as " + role + " on topic " + topic);
 
-        writer.println("REGISTER|" + role);
+        writer.println("REGISTER|" + role + "|" + topic);
 
         Thread listener = new Thread(() -> {
             try {

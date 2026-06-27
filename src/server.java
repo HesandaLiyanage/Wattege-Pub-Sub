@@ -40,11 +40,14 @@ public class server {
         }
     }
 
+    private static final String DEFAULT_TOPIC = "GLOBAL";
+
     static class ClientHandler implements Runnable {
 
         private final Socket clientSocket;
         private PrintWriter writer;
-        private String role; // This can be Publisher ot Subscriber
+        private String role;   // PUBLISHER or SUBSCRIBER
+        private String topic;  // topic this client is registered on
 
         public ClientHandler(Socket clientSocket) {
             this.clientSocket = clientSocket;
@@ -60,8 +63,10 @@ public class server {
                 String registerLine = reader.readLine();
 
                 if (registerLine != null && registerLine.startsWith("REGISTER")) {
-                    role = registerLine.split("\\|")[1];
-                    System.out.println("Client registered as: " + role);
+                    String[] parts = registerLine.split("\\|");
+                    role  = parts.length > 1 ? parts[1] : null;
+                    topic = parts.length > 2 && !parts[2].isEmpty() ? parts[2] : DEFAULT_TOPIC;
+                    System.out.println("Client registered as: " + role + " on topic " + topic);
                 }
 
                 String line;
@@ -69,14 +74,14 @@ public class server {
                 while ((line = reader.readLine()) != null) {
 
                     if (line.equalsIgnoreCase("terminate")) {
-                        System.out.println(role + "disconnected.");
+                        System.out.println(role + " disconnected.");
                         break;
                     }
 
-                    System.out.println(role + "says: " + line);
+                    System.out.println(role + " says: " + line);
 
                     if ("PUBLISHER".equalsIgnoreCase(role)) {
-                        broadcastToSubscribers(line);
+                        broadcastToSubscribers(line, topic);
                     }
                 }
             } catch (IOException e) {
@@ -97,10 +102,16 @@ public class server {
             return role;
         }
 
-        private void broadcastToSubscribers(String message){
+        public String getTopic(){
+            return topic;
+        }
+
+        private void broadcastToSubscribers(String message, String fromTopic){
+            String formatted = "[" + fromTopic + "] " + message;
             for (ClientHandler client : clients) {
-                if ("SUBSCRIBER".equalsIgnoreCase(client.getRole())) {
-                    client.send(message);
+                if ("SUBSCRIBER".equalsIgnoreCase(client.getRole())
+                        && fromTopic.equals(client.getTopic())) {
+                    client.send(formatted);
                 }
             }
         }
